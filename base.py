@@ -1,5 +1,6 @@
 from django.conf import settings
 from django.contrib import admin
+from django.core.files.uploadedfile import UploadedFile
 from django.db import models
 from django.utils import timezone
 from sculpt.common import Enumeration, EnumerationData
@@ -234,6 +235,93 @@ class AbstractStoredFile(OverridableChoicesMixin, AbstractAutoHash):
 
             return response
 
+    # a common use case is needing to create a stored file
+    # based on the results of an urllib2 request; this will do
+    # that, applying any additional parameters given to the
+    # creation, and setting image dimensions if the file is
+    # an image
+    #
+    # NOTE: this is a factory method
+    #
+    # NOTE: this won't fill in an expiration date; it's assumed
+    # that you will provide one (you can use default_date_expires())
+    #
+    @classmethod
+    def create_from_http_response(cls, response, attrs = None):
+
+        # determine the original filename, as plucked from
+        # the request; note that this is always 
+        import urlparse
+        parsed_url = urlparse.urlparse(response.geturl())
+        basename = os.path.basename(parsed_url.path)
+        if basename == '':
+            # bare directory requested, use the last directory name instead
+            basename = parsed_url.path.rsplit('/',2)[-2]
+            if basename == '':
+                # must've requested the root path
+                basename = '_unknown_'
+
+        # base attributes can be overridden
+        base_attrs = {
+                'original_filename': basename,
+                'date_created': datetime.datetime.utcnow(),
+            }
+        if attrs is not None:
+            base_attrs.update(attrs)
+        
+        # remaining attributes are always populated from
+        # the response
+        base_attrs.update({
+                'size': response.info().getheader('Content-Length'),
+                'mime_type': response.info().gettype(),
+            })
+
+        # create, but don't save, the object
+        sf = cls(**base_attrs)
+
+        # attempt to write the file; this will generate a
+        # hash and local filename
+        sf.write_to_disk(response, save = False)
+
+        # try to extract image dimensions
+        original_image = None
+        if settings.SCULPT_S3FILES_CHECK_IMAGES and sf.is_image:
+            from PIL import Image
+            try:
+                original_image = Image.open(sf.local_path)
+
+                # valid image, extract metadata            
+                sf.width = original_image.size[0]
+                sf.height = original_image.size[1]
+                sf.is_valid = True
+            
+            except IOError, e:
+                # the file seems to be invalid
+                sf.is_valid = False
+
+        # we're done parsing the file; save the meta data
+        # record to generate its hash and local file path
+        sf.save()
+
+        # see if we need to create any derived images
+        if sf.is_valid and original_image:
+            for derivation in cls.DERIVATION_TYPES.iter_dicts():
+                if derivation['mode'] == cls.DERIVATION_MODES.IMMEDIATELY:
+                    # this is a process we need to do now, but pass the
+                    # original image we have so it won't be re-created
+                    sf.generate_derivation(derivation['id'], original_image)
+
+        # give back the new record
+        return sf
+
+    # if you're truly lazy, we'll do the request for you,
+    # too (but we'll raise an exception if it fails)
+    @classmethod
+    def create_from_url(cls, url, attrs = None):
+        import urllib2
+        response = urllib2.urlopen(url)
+        return cls.create_from_http_response(response, attrs)
+
     # generate a relative path to where the data is stored,
     # including breaking up filenames based on parts of its
     # hash
@@ -326,13 +414,28 @@ class AbstractStoredFile(OverridableChoicesMixin, AbstractAutoHash):
             updated_fields['generated_filename'] = True
 
         # make sure the directory exists
-        self.ensure_path_exists()
+        # this isn't under exception management because if this
+        # fails it reflects a configuration problem that is
+        # fairly severe, and it shouldn't be ignored
+        self.ensure_local_path_exists()
 
         # write to local disk
         try:
             with open(self.local_path, 'wb+') as destination:
-                for chunk in data.chunks():
-                    destination.write(chunk)
+                if isinstance(data, UploadedFile):
+                    # this is a Django uploaded file
+                    for chunk in data.chunks():
+                        destination.write(chunk)
+                else:
+                    # we're assuming this is a completed
+                    # HTTP request; write it out in chunks
+                    chunk_size = 65536
+                    while True:
+                        chunk = data.read(chunk_size)
+                        destination.write(chunk)
+                        if len(chunk) < chunk_size:
+                            break
+
         except IOError, e:
             # if we can't write the file, it's corrupted
             # (possibly because of low disk space) so update
@@ -457,7 +560,10 @@ class AbstractStoredFile(OverridableChoicesMixin, AbstractAutoHash):
             # we already know this file is corrupt; do not
             # attempt to process it
             if settings.SCULPT_S3FILES_DUMP_DERIVATIONS:
-                print 'DERIVATION FAILED: corrupted source'
+                if self.remote_status == self.REMOTE_STATUS.LOCAL_CORRUPT:
+                    print 'DERIVATION FAILED: corrupted source'
+                else:
+                    print 'DERIVATION FAILED: file not explicitly marked valid'
             
             # update cache as we know we don't have this derivation type
             self._derivation_cache[derivation_type] = None
@@ -583,7 +689,7 @@ class AbstractStoredFile(OverridableChoicesMixin, AbstractAutoHash):
             original_image = Image.open(self.local_path)
 
         if self.is_valid and original_image:
-            for derivation in self.file_class.DERIVATION_TYPES:
+            for derivation in self.file_class.DERIVATION_TYPES.iter_dicts():
                 if derivation['mode'] == self.file_class.DERIVATION_MODES.IMMEDIATELY:
                     # this is a process we need to do now, but pass the
                     # original image we have so it won't be re-created

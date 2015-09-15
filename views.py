@@ -92,23 +92,24 @@ class AjaxFileUploadView(AjaxFormView):
                 # valid image, extract metadata            
                 sf.width = original_image.size[0]
                 sf.height = original_image.size[1]
+                sf.is_valid = True
             
             except IOError, e:
                 # the file seems to be invalid
                 sf.is_valid = False
             
+        # write or move the file
+        # NOTE: if anything goes wrong, the stored file
+        # will be marked as invalid
+        sf.write_to_disk(uf, save = False)
+        
         # we're done parsing the file; save the meta data
         # record to generate its hash and local file path
         sf.save()
         
-        # write or move the file
-        # NOTE: if anything goes wrong, the stored file
-        # will be marked as invalid
-        sf.write_to_disk(uf)
-        
         # see if we need to create any derived images
         if sf.is_valid and original_image:
-            for derivation in self.file_class.DERIVATION_TYPES:
+            for derivation in self.file_class.DERIVATION_TYPES.iter_dicts():
                 if derivation['mode'] == self.file_class.DERIVATION_MODES.IMMEDIATELY:
                     # this is a process we need to do now, but pass the
                     # original image we have so it won't be re-created
