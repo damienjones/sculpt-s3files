@@ -180,6 +180,29 @@ class AbstractStoredFile(OverridableChoicesMixin, AbstractAutoHash):
         # pass through to the regular save method
         return super(AbstractStoredFile, self).save(*args, **kwargs)
 
+    # when we delete the record, we want to go ahead and clean
+    # up any on-disk files, too
+    #
+    # Django allows us to override the delete() method but
+    # this has some limitations. When performing bulk deletes
+    # or cascaded deletes, this method will NOT be called so
+    # there is always the chance that records could be deleted
+    # and we are left with orphaned files. We can clean those
+    # up after the fact, but it would be better to avoid those
+    # situations entirely.
+    #
+    def delete(self):
+        # first, delete all the derivations; we do this
+        # one at a time so that we invoke the delete()
+        # method on each derivation
+        for d in self.derivations.all():
+            d.delete()
+
+        if os.path.exists(self.local_path):
+            os.remove(self.local_path)
+
+        return super(AbstractStoredFile, self).delete()
+
     #
     # utility functions
     #
