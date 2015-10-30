@@ -492,7 +492,7 @@ class AbstractStoredFile(OverridableChoicesMixin, AbstractAutoHash):
         else:
             if now is None:
                 now = datetime.datetime.utcnow()
-            return now + datetime.timedelta(settings.sculpt_S3FILES_AUTO_EXPIRE_UPLOADS)
+            return now + datetime.timedelta(settings.SCULPT_S3FILES_AUTO_EXPIRE_UPLOADS)
 
     #
     # derivations

@@ -2,7 +2,7 @@ from django import forms
 from django.conf import settings
 from django.utils import timezone
 from sculpt.ajax.forms import AjaxForm, AjaxUploadFormMixin
-from sculpt.ajax.responses import AjaxSuccessResponse
+from sculpt.ajax.responses import AjaxDataResponse
 from sculpt.ajax.views import AjaxFormView
 from crispy_forms.layout import Layout, Row, Div, Submit, HTML
 import datetime
@@ -58,21 +58,21 @@ class AjaxFileUploadView(AjaxFormView):
     #
     include_derivations = [ 'THUMBNAIL' ]
 
-    def prepare_form(self, request, form):
+    def prepare_form(self, form):
         form.setup_target_field(self.target_form_id, self.target_field_id)
 
-    def process_form(self, request, form):
+    def process_form(self, form):
         # the form is valid and the file is either in RAM or
         # stored in a temporary disk file, but either way,
         # we are going to store it
 
         # quick reference to uploaded file object
-        uf = request.FILES['uploaded_file']
+        uf = self.request.FILES['uploaded_file']
         
         # before we can store it in a permanent place we need
         # a guaranteed-unique filename for it, so we need to
         # create and save the StoredFile record
-        sf_attributes = self.get_stored_file_attributes(request, form)
+        sf_attributes = self.get_stored_file_attributes(form)
         sf = self.file_class(**sf_attributes)
 
         # before we save the record, see if it's an image type
@@ -121,7 +121,12 @@ class AjaxFileUploadView(AjaxFormView):
         self.stored_file = sf
         
         # return a default result set
-        return AjaxSuccessResponse(self.generate_results(sf))
+        results = self.generate_results(sf)
+        return self.prepare_results(form, sf, results)
+
+    # in case you need to override the results returned
+    def prepare_results(self, form, sf, results):
+        return AjaxDataResponse(results)
 
     # invoked when the form is processed; override this to
     # customize the creation of the StoredFile-derived
@@ -131,9 +136,9 @@ class AjaxFileUploadView(AjaxFormView):
     # NOTE: the record isn't actually created here, just the
     # parameters used to create it
     #
-    def get_stored_file_attributes(self, request, form):
+    def get_stored_file_attributes(self, form):
         now = timezone.now()
-        uf = request.FILES['uploaded_file']
+        uf = self.request.FILES['uploaded_file']
         return {
                 'original_filename': uf.name,
                 'size': uf.size,
