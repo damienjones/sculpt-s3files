@@ -12,8 +12,8 @@ from PIL import Image
 # file is uploaded, the upload field gets hidden
 class SingleFileUploadForm(AjaxUploadFormMixin, AjaxForm):
     
-    def setup_target_field(self, target_form_id, target_field_id):
-        self.helper.attrs['data-target-form-id'] = target_form_id
+    def setup_target_field(self, target_queue_id, target_field_id):
+        self.helper.attrs['data-queue-id'] = target_queue_id
         self.helper.attrs['data-target-field-id'] = target_field_id
     
     def setup_form_helper(self, helper):
@@ -24,6 +24,8 @@ class SingleFileUploadForm(AjaxUploadFormMixin, AjaxForm):
                 'uploaded_file',
                 HTML('{% include "sculpt_s3files/upload_single.html" %}'),
             )
+
+        return super(SingleFileUploadForm, self).setup_form_helper(helper)
 
 
 # by default, we just accept the uploaded form, create
@@ -39,7 +41,7 @@ class AjaxFileUploadView(AjaxFormView):
     # the host page script for managing uploads
     # will want to know what form/field should
     # be modified to have the file ID
-    target_form_id = ''
+    target_queue_id = ''
     target_field_id = ''
 
     # we might have derivations that would be useful
@@ -59,7 +61,7 @@ class AjaxFileUploadView(AjaxFormView):
     include_derivations = [ 'THUMBNAIL' ]
 
     def prepare_form(self, form):
-        form.setup_target_field(self.target_form_id, self.target_field_id)
+        form.setup_target_field(self.target_queue_id, self.target_field_id)
 
     def process_form(self, form):
         # the form is valid and the file is either in RAM or
