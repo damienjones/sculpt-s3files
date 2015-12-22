@@ -5,8 +5,10 @@ from sculpt.common import Enumeration
 
 # how to describe a transformation
 RESIZE_MODES = Enumeration(
-        (0, 'CROP'),
-        (1, 'EXPAND'),
+        (0, 'CROP'),            # existing image must fill the requested size, with excess cropped
+        (1, 'EXPAND'),          # existing image must all appear within the requested size, with padding
+        (2, 'MINIMUM_SIZE'),    # do not pad or crop, but use this minimum size
+        (3, 'MAXIMUM_SIZE'),    # do not pad or crop, but use this maximum size
     )
 ANCHOR_HORIZONTAL = Enumeration(
         (0, 'LEFT'),
@@ -46,14 +48,25 @@ def process_image(source_image, operations):
             # size; we need to determine whether to crop or pad and to
             # which axis those need to be done
             #
-            aspect_ratio = float(op['target_size'][0]) / float(op['target_size'][1])
-            is_too_wide = float(working_image.size[0]) / float(working_image.size[1]) > aspect_ratio
-            if (op['resize_mode'] == RESIZE_MODES.CROP and is_too_wide) or (op['resize_mode'] == RESIZE_MODES.EXPAND and not is_too_wide):
-                # determine the size by the height
-                next_size = ( int(working_image.size[1] * aspect_ratio), working_image.size[1] )
+            current_aspect_ratio = float(working_image.size[0]) / float(working_image.size[1])
+            target_aspect_ratio = float(op['target_size'][0]) / float(op['target_size'][1])
+            is_too_wide = current_aspect_ratio > target_aspect_ratio
+            force_rgb = True
+            
+            if op['resize_mode'] == RESIZE_MODES.MINIMUM_SIZE:
+                pass    # TODO
+
+            elif op['resize_mode'] == RESIZE_MODES.MAXIMUM_SIZE:
+                pass    # TODO
+
             else:
-                # determine the size by the width
-                next_size = ( working_image.size[0], int(working_image.size[0] / aspect_ratio) )
+                # pad or crop
+                if (op['resize_mode'] == RESIZE_MODES.CROP and is_too_wide) or (op['resize_mode'] == RESIZE_MODES.EXPAND and not is_too_wide):
+                    # determine the size by the height
+                    next_size = ( int(working_image.size[1] * target_aspect_ratio), working_image.size[1] )
+                else:
+                    # determine the size by the width
+                    next_size = ( working_image.size[0], int(working_image.size[0] / target_aspect_ratio) )
 
             # determine the anchor point for the crop
             if op['anchor_horizontal'] == ANCHOR_HORIZONTAL.LEFT:
@@ -69,6 +82,13 @@ def process_image(source_image, operations):
                 y = int((working_image.size[1] - next_size[1]) / 2)
             elif op['anchor_vertical'] == ANCHOR_VERTICAL.BOTTOM:
                 y = working_image.size[1] - next_size[1]
+
+            # sometimes we get an image that is a paletted image rather
+            # than RGB; if we've flagged this operation to force it to
+            # RGB (which is required if we're going to resize and not
+            # have it look bad) take care of that
+            if force_rgb and working_image.mode != 'RGB':
+                working_image = working_image.convert(mode = 'RGB')
 
             if op['resize_mode'] == RESIZE_MODES.CROP:
                 # perform the crop, producing a copy because we do not
