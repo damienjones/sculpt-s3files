@@ -60,10 +60,10 @@ class AjaxFileUploadView(AjaxFormView):
     #
     include_derivations = [ 'THUMBNAIL' ]
 
-    def prepare_form(self, form):
+    def prepare_form(self, form, form_alias):
         form.setup_target_field(self.target_queue_id, self.target_field_id)
 
-    def process_form(self, form):
+    def process_form(self, form, form_alias):
         # the form is valid and the file is either in RAM or
         # stored in a temporary disk file, but either way,
         # we are going to store it
@@ -124,10 +124,10 @@ class AjaxFileUploadView(AjaxFormView):
         
         # return a default result set
         results = self.generate_results(sf)
-        return self.prepare_results(form, sf, results)
+        return self.prepare_results(form, form_alias, sf, results)
 
     # in case you need to override the results returned
-    def prepare_results(self, form, sf, results):
+    def prepare_results(self, form, form_alias, sf, results):
         return AjaxDataResponse(results)
 
     # invoked when the form is processed; override this to
