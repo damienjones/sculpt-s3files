@@ -561,7 +561,13 @@ class AbstractStoredFile(OverridableChoicesMixin, AbstractAutoHash):
         
     # a version of get_derivation which does not require a
     # parameter directly and is usable in templates
-    get_derivation = property(parameter_proxy('_get_derivation', DERIVATION_TYPES))
+    # NOTE: we give the enumeration as a string rather than
+    # as a literal because derived classes will override the
+    # enumeration, and we want the parameter proxy to look
+    # up the enumeration from the derived class at the time
+    # we invoke it, rather than just once here in the base
+    # class
+    get_derivation = property(parameter_proxy('_get_derivation', 'DERIVATION_TYPES'))
 
     # actually produce a derived file, given a rule
     # NOTE: if you already have the original image available, pass it
