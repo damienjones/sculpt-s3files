@@ -69,7 +69,8 @@ class AjaxFileUploadView(AjaxFormView):
         # we are going to store it
 
         # quick reference to uploaded file object
-        uf = self.request.FILES['uploaded_file']
+        # NOTE: make sure to account for prefix
+        uf = self.request.FILES[form.add_prefix('uploaded_file')]
         
         # before we can store it in a permanent place we need
         # a guaranteed-unique filename for it, so we need to
@@ -140,7 +141,7 @@ class AjaxFileUploadView(AjaxFormView):
     #
     def get_stored_file_attributes(self, form):
         now = timezone.now()
-        uf = self.request.FILES['uploaded_file']
+        uf = self.request.FILES[form.add_prefix('uploaded_file')]   # make sure to include prefix
         return {
                 'original_filename': uf.name,
                 'size': uf.size,
