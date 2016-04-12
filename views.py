@@ -170,18 +170,19 @@ class AjaxFileUploadView(AjaxFormView):
 
         # add in any requested derivations, if
         # they are available
-        for derivation_id in self.include_derivations:
-            if derivation_id in sf._derivation_cache:
-                dsf = sf._get_derivation(derivation_id)   # _get_derivation to bypass ParameterProxy
-                results[derivation_id.lower()] = {
-                        'hash': dsf.hash,
-                        'size': dsf.size,
-                        'url': dsf.external_url,    # always the external one
-                        'width': dsf.width,
-                        'height': dsf.height,
-                        'is_image': dsf.is_image,
-                        'is_video': dsf.is_video,
-                        'is_audio': dsf.is_audio,
-                    }
+        if sf._derivation_cache is not None:
+            for derivation_id in self.include_derivations:
+                if derivation_id in sf._derivation_cache:
+                    dsf = sf._get_derivation(derivation_id)   # _get_derivation to bypass ParameterProxy
+                    results[derivation_id.lower()] = {
+                            'hash': dsf.hash,
+                            'size': dsf.size,
+                            'url': dsf.external_url,    # always the external one
+                            'width': dsf.width,
+                            'height': dsf.height,
+                            'is_image': dsf.is_image,
+                            'is_video': dsf.is_video,
+                            'is_audio': dsf.is_audio,
+                        }
 
         return results
